@@ -303,7 +303,6 @@ void read_page(int rrn, BTreePage *page)
     fclose(index_file);
 }
 
-// Função para obter um novo RRN para uma página
 int getpage()
 {
     FILE *index_file = fopen(INDEX_FILENAME, "rb+");
@@ -314,7 +313,6 @@ int getpage()
     }
     fseek(index_file, 0, SEEK_END);
     int rrn = (ftell(index_file) - sizeof(Header)) / sizeof(BTreePage);
-    //printf("RRN(getpage): %d\n", rrn);
     fclose(index_file);
     return rrn;
 }
@@ -322,13 +320,12 @@ int getpage()
 // Inicializa uma página da árvore-B
 void init_page(BTreePage *page)
 {
-    printf("Pagina inicializada.\n");
     page->keycount = 0;
     for (int i = 0; i < MAX_KEYS; i++)
     {
         memset(page->keys[i], '\0', sizeof(page->keys[i]));
-        page->children[i] = NIL;
         page->record_rrn[i] = NIL;
+        page->children[i] = NIL;
     }
     page->children[MAX_KEYS] = NIL;
 }
@@ -468,67 +465,57 @@ void search_student(FILE *data_file, FILE *index_file, char *key)
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-void split(char *key, int r_child, BTreePage *p_oldpage, char *promo_key, int *promo_r_child, BTreePage *p_newpage)
+void split(char *key, int r_child, int rrn, BTreePage *p_oldpage, char *promo_key, int *promo_r_child, BTreePage *p_newpage, int *promo_rrn)
 {
-    int j;
-    int mid = 2; // Ponto médio para dividir
-    char workkeys[MAX_KEYS + 1][7];
-    int workchil[MAX_KEYS + 2];
-    int work_rrns[MAX_KEYS + 1];
+    int mid = 2;
+    char temp_keys[MAX_KEYS + 1][7];
+    int temp_children[MAX_CHILD + 1];
+    int temp_rrns[MAX_KEYS + 1];
 
-    //printf("key = %s\n", key);
-
-    // Copia chaves e filhos para arrays temporários
-    for (j = 0; j < MAX_KEYS; j++)
+    for (int i = 0; i < MAX_KEYS; i++)
     {
-        strcpy(workkeys[j], p_oldpage->keys[j]);
-        workchil[j] = p_oldpage->children[j];
-        work_rrns[j] = p_oldpage->record_rrn[j];
+        strcpy(temp_keys[i], p_oldpage->keys[i]);
+        temp_children[i] = p_oldpage->children[i];
+        temp_rrns[i] = p_oldpage->record_rrn[i];
     }
-    workchil[MAX_KEYS] = p_oldpage->children[MAX_KEYS];
+    temp_children[MAX_KEYS] = p_oldpage->children[MAX_KEYS];
 
-    // Insere a nova chave e o filho no local apropriado
-    for (j = MAX_KEYS; j > 0 && strcmp(key, workkeys[j - 1]) < 0; j--)
+    // Insere a nova chave no lugar apropriado
+    int i;
+    for (i = MAX_KEYS; i > 0 && strcmp(key, temp_keys[i - 1]) < 0; i--)
     {
-        strcpy(workkeys[j], workkeys[j - 1]);
-        workchil[j + 1] = workchil[j];
-        work_rrns[j] = work_rrns[j - 1];
+        strcpy(temp_keys[i], temp_keys[i - 1]);
+        temp_children[i + 1] = temp_children[i];
+        temp_rrns[i] = temp_rrns[i - 1];
     }
-    
-    strcpy(workkeys[j], key);
-    workchil[j + 1] = r_child;
-    work_rrns[j] = r_child;
+    strcpy(temp_keys[i], key);
+    temp_children[i + 1] = r_child;
+    temp_rrns[i] = rrn;
 
-    // Inicializa nova página e define a chave promovida
-    *promo_r_child = getpage();
     init_page(p_newpage);
-    strcpy(promo_key, workkeys[2]);
+    *promo_r_child = getpage();
+    *promo_rrn = temp_rrns[mid];
+    strcpy(promo_key, temp_keys[mid]);
     printf("Chave %s promovida\n", promo_key);
 
-    // Distribui chaves entre a página antiga e a nova
-   char vazio[7] = "@@@@@@";
-   for (j = 0; j < MAX_KEYS + 1; j++)
+    // Divide os elementos na página antiga e na nova
+    for (int j = 0; j < mid; j++)
     {
-        if(j<mid){
-            strcpy(p_oldpage->keys[j], workkeys[j]);
-            p_oldpage->record_rrn[j] = work_rrns[j];
-        }else if(j==mid){
-            p_oldpage->children[j] = workchil[j];
-        }else{
-            strcpy(p_newpage->keys[j-mid-1], workkeys[j]);
-            p_newpage->children[j-mid-1] = workchil[j];
-            p_newpage->record_rrn[j-mid-1] = work_rrns[j];
-            
-            strcpy(p_oldpage->keys[j - 1], vazio);
-            p_oldpage->children[j] = NIL;
-            p_oldpage->record_rrn[j - 1] = NIL;
-        }       
+        strcpy(p_oldpage->keys[j], temp_keys[j]);
+        p_oldpage->children[j] = temp_children[j];
+        p_oldpage->record_rrn[j] = temp_rrns[j];
     }
-    p_oldpage->children[mid] = workchil[mid];
-    p_newpage->children[j - mid - 1] = workchil[MAX_KEYS + 1];
+    p_oldpage->children[mid] = temp_children[mid];
+    p_oldpage->keycount = mid;
 
-    p_newpage->keycount = 1;
-    p_oldpage->keycount = 2;
+    for (int j = mid + 1; j <= MAX_KEYS; j++)
+    {
+        strcpy(p_newpage->keys[j - mid - 1], temp_keys[j]);
+        p_newpage->children[j - mid - 1] = temp_children[j];
+        p_newpage->record_rrn[j - mid - 1] = temp_rrns[j];
+    }
+    p_newpage->children[MAX_KEYS - mid] = temp_children[MAX_CHILD];
+    p_newpage->keycount = MAX_KEYS - mid - 1;
 }
 
 int insert_in_tree(int rrn, char *key, int record_rrn, int *promo_child, char *promo_key, int *promo_rrn)
@@ -593,7 +580,7 @@ int insert_in_tree(int rrn, char *key, int record_rrn, int *promo_child, char *p
         // Divisão do nó: ocorre promoção de uma chave para o nível superior
         printf("Divisao de no\n");
         //split(promo_key, *promo_rrn, *promo_child, &page, promo_key, promo_rrn, promo_child);
-        split(key, p_b_rrn, &page, promo_key, promo_child, &newpage);
+        split(key, p_b_rrn, rrn, &page, promo_key, promo_child, &newpage, promo_rrn);
 
         write_page(rrn, &page);
         write_page(*promo_child, &newpage);
