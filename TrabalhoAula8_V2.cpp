@@ -7,7 +7,8 @@
 #define MAX_INSERE 11
 #define MAX_BUSCA 5
 
-struct busca {
+struct busca
+{
     char id_aluno[4];
     char sigla_disc[4];
 } vet_b[MAX_BUSCA];
@@ -81,15 +82,16 @@ void update_header(FILE *index_file, Header *header)
 
 void initialize_btree(const char *index_filename)
 {
+    printf("Inicializando arvore...\n");
     FILE *index_file = fopen(index_filename, "rb");
 
     // Se o arquivo de índice não existe, cria e inicializa
     if (!index_file)
     {
-        index_file = fopen(index_filename, "wb");
+        index_file = fopen(index_filename, "wb+");
         if (!index_file)
         {
-            perror("Erro ao criar o arquivo de índice");
+            printf("Erro ao criar o arquivo de índice");
             exit(1);
         }
 
@@ -100,7 +102,9 @@ void initialize_btree(const char *index_filename)
         header.search_count = 0; // Contador de buscas zerado
 
         // Grava o cabeçalho no início do arquivo de índice
-        fwrite(&header, sizeof(Header), 1, index_file);
+        fseek(index_file, 0, SEEK_SET);
+        fwrite(&header, sizeof(header), 1, index_file);
+        fflush(index_file);
         printf("Arquivo de índice inicializado com sucesso.\n");
     }
     else
@@ -365,7 +369,7 @@ void split(char *promo_key, int promo_rrn, int right_child, BTreePage *old_page,
     temp_rrns[i] = promo_rrn;
 
     // Define a chave promovida para o nível superior e o novo RRN
-    new_promo_key = temp_keys[2]; // Tirei o asterisco
+    strcpy(new_promo_key, temp_keys[2]);
     *new_promo_rrn = temp_rrns[2];
 
     // Divide as chaves e filhos entre a página antiga e a nova
@@ -412,13 +416,15 @@ int insert_in_tree(int rrn, char *key, int record_rrn, int *promo_child, char *p
     if (found)
     {
         printf("Chave %s duplicada\n", key);
-        return 0; // Indica falha na inserção por chave duplicada
+        return -1; // Indica falha na inserção por chave duplicada
     }
 
     // Chamada recursiva para inserir no filho apropriado
     int promoted = insert_in_tree(page.children[pos], key, record_rrn, promo_child, promo_key, promo_rrn);
 
-    if (!promoted)
+    if (promoted == -1)
+        return -1; // Retorna imediatamente se houve uma duplicação de chave
+    if (promoted == 0)
         return 0; // Caso não ocorra promoção, termina a função
 
     // Se há espaço na página, insere a chave promovida na posição correta
@@ -431,15 +437,16 @@ int insert_in_tree(int rrn, char *key, int record_rrn, int *promo_child, char *p
     else
     {
         // Divisão do nó: ocorre promoção de uma chave para o nível superior
-        printf("Divisão de nó\n");  // Imprime sempre que ocorre uma divisão de nó
+        printf("Divisão de nó\n");
         split(promo_key, *promo_rrn, *promo_child, &page, promo_key, promo_rrn, promo_child);
-        printf("Chave %s promovida\n", promo_key); // Mensagem de promoção para a chave promovida
+        printf("Chave %s promovida\n", promo_key);
         write_page(rrn, &page);
         return 1; // Indica que uma promoção adicional ocorreu
     }
 }
 
-void insert_student(FILE *index_file, FILE *data_file, StudentRecord *student) {
+void insert_student(FILE *index_file, FILE *data_file, StudentRecord *student)
+{
     Header header = read_header(index_file);
 
     char key[7];
@@ -454,10 +461,13 @@ void insert_student(FILE *index_file, FILE *data_file, StudentRecord *student) {
     // Primeiro, tentamos inserir na árvore-B
     int promoted = insert_in_tree(root, key, -1, &promo_child, promo_key, &promo_rrn);
 
-    // Se a chave é duplicada, não continua o processo de inserção
-    if (promoted == 0) {
+    // Se a chave é duplicada, atualiza o contador e retorna
+    if (promoted == -1)
+    {
         printf("Chave %s duplicada\n", key);
-        return;  // Termina a função
+        header.insert_count++; // Atualiza o contador de inserções, mesmo para chaves duplicadas
+        update_header(index_file, &header);
+        return; // Termina a função
     }
 
     // Se a chave não for duplicada, insere o registro no arquivo de dados
@@ -469,17 +479,17 @@ void insert_student(FILE *index_file, FILE *data_file, StudentRecord *student) {
     promo_rrn = record_rrn;
 
     // Atualiza a árvore com o RRN correto do registro
-    if (promoted) {
+    if (promoted == 1)
+    {
         // Caso a promoção ocorra na raiz, cria uma nova raiz
         root = create_root(promo_key, promo_rrn, promo_child);
-        header.root_rrn = root;  // Atualiza o RRN da raiz no cabeçalho
+        header.root_rrn = root; // Atualiza o RRN da raiz no cabeçalho
     }
 
-    printf("Chave %s inserida com sucesso\n", key);  // Mensagem para sucesso na inserção
-    header.insert_count++;  // Atualiza o contador de inserções
-    update_header(index_file, &header);  // Grava o cabeçalho atualizado no arquivo
+    printf("Chave %s inserida com sucesso\n", key);
+    header.insert_count++; // Atualiza o contador de inserções para novas inserções
+    update_header(index_file, &header); // Grava o cabeçalho atualizado no arquivo
 }
-
 
 /*
 void insert_student(FILE *index_file, FILE *data_file, StudentRecord *student)
@@ -570,9 +580,11 @@ int main()
 
     // Inicializa a árvore-B (cria o arquivo de índice se ele não existe)
     initialize_btree(INDEX_FILENAME);
+    
 
     // Abre o arquivo de índice e o arquivo de dados
-    index_file = fopen(INDEX_FILENAME, "wb+");
+    index_file = fopen(INDEX_FILENAME, "rb+");
+    //init_header(index_file);
     data_file = fopen(FILENAME, "rb+");
 
     if (!data_file)
@@ -583,26 +595,30 @@ int main()
     char option = 'a';
     while (option != '0')
     {
-        printf("\nEscolha uma opção:\n");
+        printf("\nEscolha uma opcao:\n");
         printf("1. Inserir um aluno\n");
         printf("2. Buscar um aluno\n");
         printf("3. Listar todos os alunos\n");
         printf("0. Sair\n");
-        printf("Opção: ");
-        scanf("%c", &option);
+        printf("Opcao: ");
+        scanf(" %c", &option);
 
-        if (option == '0')
-            break;
+        //if (option == '0')
+            //break;
 
         switch (option)
         {
+        case '0':
+            break;
         case '1':
         {
             // Insere um novo registro de aluno
-            
-            //Le o header
+
+            // Le o header
             Header header;
             header = read_header(index_file);
+
+            printf("Inserindo aluno de numero %d.\n", header.insert_count);
 
             // Insere o aluno no arquivo e na árvore-B
             insert_student(index_file, data_file, &vet[header.insert_count]);
@@ -612,7 +628,7 @@ int main()
         {
             // Busca um aluno específico
 
-            //Le o header
+            // Le o header
             Header header;
             header = read_header(index_file);
 
@@ -632,7 +648,7 @@ int main()
             break;
         }
         default:
-            printf("Opção inválida! Tente novamente.\n");
+            printf("Opcao invalida! Tente novamente.\n");
         }
     }
 
