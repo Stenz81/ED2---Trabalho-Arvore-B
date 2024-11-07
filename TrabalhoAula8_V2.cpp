@@ -370,6 +370,7 @@ void split(char *promo_key, int promo_rrn, int right_child, BTreePage *old_page,
 
     // Define a chave promovida para o nível superior e o novo RRN
     strcpy(new_promo_key, temp_keys[2]);
+    printf("Chave %s promovida\n", new_promo_key);
     *new_promo_rrn = temp_rrns[2];
 
     // Divide as chaves e filhos entre a página antiga e a nova
@@ -439,7 +440,7 @@ int insert_in_tree(int rrn, char *key, int record_rrn, int *promo_child, char *p
         // Divisão do nó: ocorre promoção de uma chave para o nível superior
         printf("Divisão de nó\n");
         split(promo_key, *promo_rrn, *promo_child, &page, promo_key, promo_rrn, promo_child);
-        printf("Chave %s promovida\n", promo_key);
+        
         write_page(rrn, &page);
         return 1; // Indica que uma promoção adicional ocorreu
     }
@@ -464,7 +465,7 @@ void insert_student(FILE *index_file, FILE *data_file, StudentRecord *student)
     // Se a chave é duplicada, atualiza o contador e retorna
     if (promoted == -1)
     {
-        printf("Chave %s duplicada\n", key);
+        //printf("Chave %s duplicada\n", key);
         header.insert_count++; // Atualiza o contador de inserções, mesmo para chaves duplicadas
         update_header(index_file, &header);
         return; // Termina a função
@@ -491,38 +492,6 @@ void insert_student(FILE *index_file, FILE *data_file, StudentRecord *student)
     update_header(index_file, &header); // Grava o cabeçalho atualizado no arquivo
 }
 
-/*
-void insert_student(FILE *index_file, FILE *data_file, StudentRecord *student)
-{
-    Header header = read_header(index_file);
-
-    char key[7];
-    sprintf(key, "%s%s", student->id, student->discipline);
-
-    // Salva o registro de aluno no arquivo de dados
-    fseek(data_file, 0, SEEK_END);
-    int record_rrn = ftell(data_file) / sizeof(StudentRecord);
-    write_student(data_file, student);
-
-    int promo_child;
-    char promo_key[7];
-    int promo_rrn;
-
-    int root = header.root_rrn;
-    int promoted = insert_in_tree(root, key, record_rrn, &promo_child, promo_key, &promo_rrn);
-
-    if (promoted)
-    {
-        // Caso a promoção ocorra na raiz, cria uma nova raiz
-        root = create_root(promo_key, promo_rrn, promo_child);
-        header.root_rrn = root; // Atualiza o RRN da raiz no cabeçalho
-    }
-
-    printf("Chave %s inserida com sucesso\n", key);
-    header.insert_count++;              // Atualiza o contador de inserções
-    update_header(index_file, &header); // Grava o cabeçalho atualizado no arquivo
-}
-*/
 /////////////////////////////////////////////////////////////////////////////////////////////
 
 int main()
@@ -618,7 +587,7 @@ int main()
             Header header;
             header = read_header(index_file);
 
-            printf("Inserindo aluno de numero %d.\n", header.insert_count);
+            //printf("Inserindo aluno de numero %d.\n", header.insert_count);
 
             // Insere o aluno no arquivo e na árvore-B
             insert_student(index_file, data_file, &vet[header.insert_count]);
