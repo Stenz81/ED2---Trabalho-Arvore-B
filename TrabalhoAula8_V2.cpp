@@ -227,6 +227,7 @@ int create_root(char *key, int left_child, int right_child)
 // Insere uma chave em uma página da árvore-B
 void insert_in_page(char *key, int record_rrn, int right_child, BTreePage *page)
 {
+    printf("Entrou no insert in page. \n");
     int j;
     for (j = page->keycount - 1; j >= 0 && strcmp(key, page->keys[j]) < 0; j--)
     {
@@ -234,6 +235,7 @@ void insert_in_page(char *key, int record_rrn, int right_child, BTreePage *page)
         page->children[j + 2] = page->children[j + 1];
         page->record_rrn[j + 1] = page->record_rrn[j];
     }
+    printf("Passou do for de comparacoes do insert in page. \n");
     strcpy(page->keys[j + 1], key);
     page->record_rrn[j + 1] = record_rrn;
     page->children[j + 2] = right_child;
@@ -409,7 +411,11 @@ int insert_in_tree(int rrn, char *key, int record_rrn, int *promo_child, char *p
         return 1; // Indica que a promoção ocorreu
     }
 
+    printf("Passou 1\n");
+
     read_page(rrn, &page);
+
+    printf("Passou read_page. \n");
 
     int pos;
     int found = search_node(key, &page, &pos);
@@ -420,17 +426,24 @@ int insert_in_tree(int rrn, char *key, int record_rrn, int *promo_child, char *p
         return -1; // Indica falha na inserção por chave duplicada
     }
 
+    printf("Vai entrar prox insert tree. \n");
+
     // Chamada recursiva para inserir no filho apropriado
     int promoted = insert_in_tree(page.children[pos], key, record_rrn, promo_child, promo_key, promo_rrn);
+
+    printf("Passou o insert tree. \n");
 
     if (promoted == -1)
         return -1; // Retorna imediatamente se houve uma duplicação de chave
     if (promoted == 0)
         return 0; // Caso não ocorra promoção, termina a função
 
+    printf("Passou dos verificadores de promocao e duplicata. \n");
+
     // Se há espaço na página, insere a chave promovida na posição correta
     if (page.keycount < MAX_KEYS)
     {
+        printf("Entrou em page.keycount < MAX_KEYS .\n");
         insert_in_page(promo_key, *promo_rrn, *promo_child, &page);
         write_page(rrn, &page);
         return 0; // Não ocorre promoção adicional
@@ -438,7 +451,7 @@ int insert_in_tree(int rrn, char *key, int record_rrn, int *promo_child, char *p
     else
     {
         // Divisão do nó: ocorre promoção de uma chave para o nível superior
-        printf("Divisão de nó\n");
+        printf("Divisao de no\n");
         split(promo_key, *promo_rrn, *promo_child, &page, promo_key, promo_rrn, promo_child);
         
         write_page(rrn, &page);
