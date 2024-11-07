@@ -129,7 +129,7 @@ void initialize_btree(const char *index_filename)
         }
 
         // Inicializa o cabeçalho com raiz NIL e contadores zerados
-        
+
         header.root_rrn = NIL;   // A árvore começa vazia, sem raiz
         header.insert_count = 0; // Contador de inserções zerado
         header.search_count = 0; // Contador de buscas zerado
@@ -147,7 +147,6 @@ void initialize_btree(const char *index_filename)
         printf("Root: %d\n", header.root_rrn);
         printf("Insert counter: %d\n", header.insert_count);
         printf("Search counter: %d\n", header.search_count);
-
     }
 
     // Fecha o arquivo para ser aberto posteriormente em modo "rb+" para operações de leitura/escrita
@@ -190,7 +189,6 @@ void write_student(FILE *file, StudentRecord *student)
     fwrite(&student->grade, sizeof(float), 1, file);
     fputc('#', file);
     fwrite(&student->attendance, sizeof(float), 1, file);
-
 }
 
 // Função para ler um registro de aluno a partir do arquivo
@@ -462,68 +460,78 @@ void search_student(FILE *data_file, FILE *index_file, char *key)
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-void split(char *promo_key, int promo_rrn, int right_child, BTreePage *old_page, char *new_promo_key, int *new_promo_rrn, int *new_right_child)
+void split(char *key, int r_child, BTreePage *p_oldpage, char *promo_key, int *promo_r_child, BTreePage *p_newpage)
 {
-    BTreePage new_page;
-    init_page(&new_page);
+    int j;
+    int mid = 2; // Ponto médio para dividir
+    char workkeys[MAX_KEYS + 1][7];
+    int workchil[MAX_KEYS + 2];
+    int work_rrns[MAX_KEYS + 1];
 
-    char temp_keys[MAX_KEYS + 1][7];
-    int temp_children[MAX_KEYS + 2];
-    int temp_rrns[MAX_KEYS + 1];
+    printf("key = %s\n", key);
 
-    // Copia as chaves e os filhos para arrays temporários
-    for (int i = 0; i < MAX_KEYS; i++)
+    // Copia chaves e filhos para arrays temporários
+    for (j = 0; j < MAX_KEYS; j++)
     {
-        strcpy(temp_keys[i], old_page->keys[i]);
-        temp_children[i] = old_page->children[i];
-        temp_rrns[i] = old_page->record_rrn[i];
+        strcpy(workkeys[j], p_oldpage->keys[j]);
+        workchil[j] = p_oldpage->children[j];
+        work_rrns[j] = p_oldpage->record_rrn[j];
     }
-    temp_children[MAX_KEYS] = old_page->children[MAX_KEYS];
+    workchil[MAX_KEYS] = p_oldpage->children[MAX_KEYS];
 
-    // Insere a nova chave no local apropriado nos arrays temporários
-    int i;
-    for (i = MAX_KEYS; i > 0 && strcmp(promo_key, temp_keys[i - 1]) < 0; i--)
+    // Insere a nova chave e o filho no local apropriado
+    for (j = MAX_KEYS; j > 0 && strcmp(key, workkeys[j - 1]) < 0; j--)
     {
-        strcpy(temp_keys[i], temp_keys[i - 1]);
-        temp_children[i + 1] = temp_children[i];
-        temp_rrns[i] = temp_rrns[i - 1];
+        strcpy(workkeys[j], workkeys[j - 1]);
+        workchil[j + 1] = workchil[j];
+        work_rrns[j] = work_rrns[j - 1];
     }
-    strcpy(temp_keys[i], promo_key);
-    temp_children[i + 1] = right_child;
-    temp_rrns[i] = promo_rrn;
+    
+    strcpy(workkeys[j], key);
+    workchil[j + 1] = r_child;
+    work_rrns[j] = r_child;
 
-    // Define a chave promovida para o nível superior e o novo RRN
-    strcpy(new_promo_key, temp_keys[2]);
-    printf("Chave %s promovida\n", new_promo_key);
-    *new_promo_rrn = temp_rrns[2];
+    // Inicializa nova página e define a chave promovida
+    *promo_r_child = getpage();
+    init_page(p_newpage);
+    strcpy(promo_key, workkeys[2]);
+    printf("Chave %s promovida\n", promo_key);
 
-    // Divide as chaves e filhos entre a página antiga e a nova
-    init_page(&new_page); // Adicionei o &
-    old_page->keycount = 2;
-    new_page.keycount = 2;
-
-    // Copia as chaves e os RRNs para a página antiga e para a nova
-    for (int j = 0; j < 2; j++)
+    // Distribui chaves entre a página antiga e a nova
+   char vazio[7] = "@@@@@@";
+   for (j = 0; j < MAX_KEYS + 1; j++)
     {
-        strcpy(old_page->keys[j], temp_keys[j]);
-        old_page->record_rrn[j] = temp_rrns[j];
-        old_page->children[j] = temp_children[j];
-
-        strcpy(new_page.keys[j], temp_keys[j + 3]);
-        new_page.record_rrn[j] = temp_rrns[j + 3];
-        new_page.children[j] = temp_children[j + 3];
+        if(j<mid){
+            strcpy(p_oldpage->keys[j], workkeys[j]);
+            p_oldpage->record_rrn[j] = work_rrns[j];
+        }else if(j==mid){
+            p_oldpage->children[j] = workchil[j];
+        }else{
+            strcpy(p_newpage->keys[j-mid-1], workkeys[j]);
+            p_newpage->children[j-mid-1] = workchil[j];
+            p_newpage->record_rrn[j-mid-1] = work_rrns[j];
+            
+            strcpy(p_oldpage->keys[j - 1], vazio);
+            p_oldpage->children[j] = NIL;
+            p_oldpage->record_rrn[j - 1] = NIL;
+        }       
     }
-    old_page->children[2] = temp_children[2];
-    new_page.children[2] = temp_children[5];
+    p_oldpage->children[mid] = workchil[mid];
+    p_newpage->children[j - mid - 1] = workchil[MAX_KEYS + 1];
 
-    // Grava a nova página no arquivo de índice
-    *new_right_child = getpage();
-    write_page(*new_right_child, &new_page);
+    p_newpage->keycount = 1;
+    p_oldpage->keycount = 2;
 }
 
 int insert_in_tree(int rrn, char *key, int record_rrn, int *promo_child, char *promo_key, int *promo_rrn)
 {
-    BTreePage page;
+    //BTreePage page;
+
+    BTreePage page, newpage;
+    
+    short p_b_rrn;
+    char p_b_key[7];
+
     if (rrn == NIL)
     {
         // Caso base: se o nó é NIL, a chave deve ser promovida ao nível superior
@@ -533,11 +541,11 @@ int insert_in_tree(int rrn, char *key, int record_rrn, int *promo_child, char *p
         return 1; // Indica que a promoção ocorreu
     }
 
-    printf("Passou 1\n");
+    //printf("Passou 1\n");
 
     read_page(rrn, &page);
 
-    printf("Passou read_page. \n");
+    //printf("Passou read_page. \n");
 
     int pos;
     int found = search_node(key, &page, &pos);
@@ -548,24 +556,24 @@ int insert_in_tree(int rrn, char *key, int record_rrn, int *promo_child, char *p
         return -1; // Indica falha na inserção por chave duplicada
     }
 
-    printf("Vai entrar prox insert tree. \n");
+    //printf("Vai entrar prox insert tree. \n");
 
     // Chamada recursiva para inserir no filho apropriado
     int promoted = insert_in_tree(page.children[pos], key, record_rrn, promo_child, promo_key, promo_rrn);
 
-    printf("Passou o insert tree. \n");
+    //printf("Passou o insert tree. \n");
 
     if (promoted == -1)
         return -1; // Retorna imediatamente se houve uma duplicação de chave
     if (promoted == 0)
         return 0; // Caso não ocorra promoção, termina a função
 
-    printf("Passou dos verificadores de promocao e duplicata. \n");
+    //printf("Passou dos verificadores de promocao e duplicata. \n");
 
     // Se há espaço na página, insere a chave promovida na posição correta
     if (page.keycount < MAX_KEYS)
     {
-        printf("Entrou em page.keycount < MAX_KEYS .\n");
+        //printf("Entrou em page.keycount < MAX_KEYS .\n");
         insert_in_page(promo_key, *promo_rrn, *promo_child, &page);
         write_page(rrn, &page);
         return 0; // Não ocorre promoção adicional
@@ -574,8 +582,9 @@ int insert_in_tree(int rrn, char *key, int record_rrn, int *promo_child, char *p
     {
         // Divisão do nó: ocorre promoção de uma chave para o nível superior
         printf("Divisao de no\n");
-        split(promo_key, *promo_rrn, *promo_child, &page, promo_key, promo_rrn, promo_child);
-        
+        //split(promo_key, *promo_rrn, *promo_child, &page, promo_key, promo_rrn, promo_child);
+        split(key, p_b_rrn, &page, promo_key, promo_child, &newpage);
+
         write_page(rrn, &page);
         return 1; // Indica que uma promoção adicional ocorreu
     }
@@ -600,7 +609,7 @@ void insert_student(FILE *index_file, FILE *data_file, StudentRecord *student)
     // Se a chave é duplicada, atualiza o contador e retorna
     if (promoted == -1)
     {
-        //printf("Chave %s duplicada\n", key);
+        // printf("Chave %s duplicada\n", key);
         header.insert_count++; // Atualiza o contador de inserções, mesmo para chaves duplicadas
         update_header(index_file, &header);
         return; // Termina a função
@@ -623,7 +632,7 @@ void insert_student(FILE *index_file, FILE *data_file, StudentRecord *student)
     }
 
     printf("Chave %s inserida com sucesso\n", key);
-    header.insert_count++; // Atualiza o contador de inserções para novas inserções
+    header.insert_count++;              // Atualiza o contador de inserções para novas inserções
     update_header(index_file, &header); // Grava o cabeçalho atualizado no arquivo
 }
 
@@ -684,7 +693,6 @@ int main()
 
     // Inicializa a árvore-B (cria o arquivo de índice se ele não existe)
     initialize_btree(INDEX_FILENAME);
-      
 
     // Abre o arquivo de índice e o arquivo de dados
     index_file = fopen(INDEX_FILENAME, "rb+");
@@ -699,7 +707,7 @@ int main()
     if (!data_file)
     {
         data_file = fopen(FILENAME, "wb+");
-    }   
+    }
 
     char option = 'a';
     while (option != '0')
@@ -712,8 +720,8 @@ int main()
         printf("Opcao: ");
         scanf(" %c", &option);
 
-        //if (option == '0')
-            //break;
+        // if (option == '0')
+        // break;
 
         switch (option)
         {
@@ -727,7 +735,7 @@ int main()
             Header header;
             header = read_header(index_file);
 
-            //printf("Inserindo aluno de numero %d.\n", header.insert_count);
+            // printf("Inserindo aluno de numero %d.\n", header.insert_count);
 
             // Insere o aluno no arquivo e na árvore-B
             insert_student(index_file, data_file, &vet[header.insert_count]);
