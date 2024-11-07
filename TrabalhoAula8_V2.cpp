@@ -4,8 +4,8 @@
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-#define MAX_INSERE 11
-#define MAX_BUSCA 5
+#define MAX_INSERE 14
+#define MAX_BUSCA 7
 
 struct busca
 {
@@ -80,9 +80,42 @@ void update_header(FILE *index_file, Header *header)
     fwrite(header, sizeof(Header), 1, index_file);
 }
 
+// Função para calcular o tamanho do registro
+int calcularTamanhoRegistro(const StudentRecord &reg)
+{
+    int tamanho_nome_aluno = 0, tamanho_nome_disciplina = 0;
+    for (int i = 0; i < 50; i++)
+    {
+
+        if (reg.name[i] == '\0')
+        { // Verifica se encontrou o espaço vazio (0x00)
+            break;
+        }
+        tamanho_nome_aluno++;
+    }
+
+    for (int i = 0; i < 50; i++)
+    {
+        if (reg.discipline_name[i] == '\0')
+        { // Verifica se encontrou o espaço vazio (0x00)
+            break;
+        }
+        tamanho_nome_disciplina++;
+    }
+
+    int tamanho = sizeof(reg.id) + 1 +
+                  sizeof(reg.discipline) + 1 +
+                  tamanho_nome_aluno * sizeof(char) + 1 + // +1 para o separador '#'
+                  tamanho_nome_disciplina * sizeof(char) + 1 +
+                  sizeof(reg.grade) + 1 +
+                  sizeof(reg.attendance);
+    return tamanho;
+}
+
 void initialize_btree(const char *index_filename)
 {
     printf("Inicializando arvore...\n");
+    Header header;
     FILE *index_file = fopen(index_filename, "rb");
 
     // Se o arquivo de índice não existe, cria e inicializa
@@ -96,7 +129,7 @@ void initialize_btree(const char *index_filename)
         }
 
         // Inicializa o cabeçalho com raiz NIL e contadores zerados
-        Header header;
+        
         header.root_rrn = NIL;   // A árvore começa vazia, sem raiz
         header.insert_count = 0; // Contador de inserções zerado
         header.search_count = 0; // Contador de buscas zerado
@@ -110,6 +143,11 @@ void initialize_btree(const char *index_filename)
     else
     {
         printf("Arquivo de índice já existe e foi aberto para leitura/escrita.\n");
+        header = read_header(index_file);
+        printf("Root: %d\n", header.root_rrn);
+        printf("Insert counter: %d\n", header.insert_count);
+        printf("Search counter: %d\n", header.search_count);
+
     }
 
     // Fecha o arquivo para ser aberto posteriormente em modo "rb+" para operações de leitura/escrita
@@ -121,18 +159,100 @@ void initialize_btree(const char *index_filename)
 // Função para escrever um registro de aluno no arquivo
 void write_student(FILE *file, StudentRecord *student)
 {
-    int size = sizeof(StudentRecord);
+    int size = calcularTamanhoRegistro(*student);
     fwrite(&size, sizeof(int), 1, file);
-    fwrite(student, sizeof(StudentRecord), 1, file);
+    // Escreve o conteúdo do registro
+    fwrite(student->id, sizeof(student->id), 1, file);
+    fputc('#', file);
+    fwrite(student->discipline, sizeof(student->discipline), 1, file);
+    fputc('#', file);
+
+    // Insere nome_aluno caracter por caracter até encontrar 0x00
+    for (int i = 0; i < 50; i++)
+    {
+        if (student->name[i] == '\0')
+        {          // Verifica se encontrou o espaço vazio (0x00)
+            break; // Pula para o próximo campo
+        }
+        fputc(student->name[i], file); // Escreve o caractere no arquivo
+    }
+    fputc('#', file);
+    // Insere nome_disciplina caracter por caracter até encontrar 0x00
+    for (int i = 0; i < 50; i++)
+    {
+        if (student->discipline_name[i] == '\0')
+        {          // Verifica se encontrou o espaço vazio (0x00)
+            break; // Pula para o próximo campo
+        }
+        fputc(student->discipline_name[i], file); // Escreve o caractere no arquivo
+    }
+    fputc('#', file);
+    fwrite(&student->grade, sizeof(float), 1, file);
+    fputc('#', file);
+    fwrite(&student->attendance, sizeof(float), 1, file);
+
 }
 
 // Função para ler um registro de aluno a partir do arquivo
 int read_student(FILE *file, StudentRecord *student)
 {
-    int size;
-    if (fread(&size, sizeof(int), 1, file) != 1)
-        return 0;
-    return fread(student, sizeof(StudentRecord), 1, file) == 1;
+    // Lê o tamanho do registro (número inteiro no início)
+    int tamanhoRegistro = 0;
+    fread(&tamanhoRegistro, sizeof(int), 1, file);
+
+    // Lê o id_aluno e o delimitador '#'
+    char id_aluno[4] = {0};
+    fread(id_aluno, sizeof(char), 4, file);
+    fgetc(file);
+
+    id_aluno[3] = '\0';
+    strcpy(student->id, id_aluno);
+
+    // Lê a sigla_disciplina e o delimitador '#'
+    char sigla_disciplina[4] = {0};
+    fread(sigla_disciplina, sizeof(char), 4, file);
+    fgetc(file);
+
+    sigla_disciplina[3] = '\0';
+    strcpy(student->discipline, sigla_disciplina);
+
+    // Lê o nome_aluno até encontrar o delimitador '#'
+    char nome_aluno[50] = {0};
+    int i = 0;
+    char c;
+    while (fread(&c, sizeof(char), 1, file) == 1 && c != '#')
+    {
+        if (i < 50 - 1)
+        {
+            nome_aluno[i++] = c;
+        }
+    }
+    nome_aluno[i] = '\0';
+    strcpy(student->name, nome_aluno);
+
+    // Lê o nome_disciplina até encontrar o delimitador '#'
+    char nome_disciplina[50] = {0};
+    i = 0;
+    while (fread(&c, sizeof(char), 1, file) == 1 && c != '#')
+    {
+        if (i < 50 - 1)
+        {
+            nome_disciplina[i++] = c;
+        }
+    }
+    nome_disciplina[i] = '\0';
+    strcpy(student->discipline_name, nome_disciplina);
+
+    // Lê a média e o delimitador '#'
+    float media = 0.0;
+    fread(&media, sizeof(float), 1, file);
+    student->grade = media;
+    fgetc(file);
+
+    // Lê a frequência
+    float frequencia = 0.0;
+    fread(&frequencia, sizeof(float), 1, file);
+    student->attendance = frequencia;
 }
 
 // Função para carregar o RRN da raiz da árvore-B
@@ -145,8 +265,9 @@ int get_root(FILE *index_file)
 }
 
 // Função para definir o RRN da raiz da árvore-B
-void set_root(FILE *index_file, int root)
+void set_root(int root)
 {
+    FILE *index_file = fopen(INDEX_FILENAME, "rb+");
     fseek(index_file, 0, SEEK_SET);
     fwrite(&root, sizeof(int), 1, index_file);
 }
@@ -219,6 +340,7 @@ int create_root(char *key, int left_child, int right_child)
 
     int rrn = getpage();
     write_page(rrn, &new_root);
+    set_root(rrn);
     return rrn;
 }
 
@@ -486,7 +608,7 @@ void insert_student(FILE *index_file, FILE *data_file, StudentRecord *student)
 
     // Se a chave não for duplicada, insere o registro no arquivo de dados
     fseek(data_file, 0, SEEK_END);
-    int record_rrn = ftell(data_file) / sizeof(StudentRecord);
+    int record_rrn = ftell(data_file) /*/ sizeof(StudentRecord)*/;
     write_student(data_file, student);
 
     // Atualiza `promo_rrn` com o endereço do registro no arquivo de dados
@@ -562,17 +684,22 @@ int main()
 
     // Inicializa a árvore-B (cria o arquivo de índice se ele não existe)
     initialize_btree(INDEX_FILENAME);
-    
+      
 
     // Abre o arquivo de índice e o arquivo de dados
     index_file = fopen(INDEX_FILENAME, "rb+");
-    //init_header(index_file);
+    /*Header header;
+    header = read_header(index_file);
+    printf("Root: %d\n", header.root_rrn);
+    printf("Insert counter: %d\n", header.insert_count);
+    printf("Search counter: %d\n", header.search_count);*/
+
     data_file = fopen(FILENAME, "rb+");
 
     if (!data_file)
     {
         data_file = fopen(FILENAME, "wb+");
-    }
+    }   
 
     char option = 'a';
     while (option != '0')
