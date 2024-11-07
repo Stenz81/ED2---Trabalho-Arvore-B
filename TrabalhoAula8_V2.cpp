@@ -45,9 +45,9 @@ typedef struct
 // Estrutura de cabeçalho para o arquivo de índice
 typedef struct
 {
-    short root_rrn;     // Endereço da raiz da árvore-B
-    short insert_count; // Contador para número de entradas usadas para inserção
-    short search_count; // Contador para número de entradas usadas para busca
+    int root_rrn;     // Endereço da raiz da árvore-B
+    int insert_count; // Contador para número de entradas usadas para inserção
+    int search_count; // Contador para número de entradas usadas para busca
 } Header;
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -114,9 +114,8 @@ int calcularTamanhoRegistro(const StudentRecord &reg)
 
 void initialize_btree(const char *index_filename)
 {
-    printf("Inicializando arvore...\n");
-    Header header;
-    FILE *index_file = fopen(index_filename, "rb");
+    
+    FILE *index_file = fopen(index_filename, "rb+");
 
     // Se o arquivo de índice não existe, cria e inicializa
     if (!index_file)
@@ -129,7 +128,7 @@ void initialize_btree(const char *index_filename)
         }
 
         // Inicializa o cabeçalho com raiz NIL e contadores zerados
-
+        Header header;
         header.root_rrn = NIL;   // A árvore começa vazia, sem raiz
         header.insert_count = 0; // Contador de inserções zerado
         header.search_count = 0; // Contador de buscas zerado
@@ -143,6 +142,7 @@ void initialize_btree(const char *index_filename)
     else
     {
         printf("Arquivo de índice já existe e foi aberto para leitura/escrita.\n");
+        Header header;
         header = read_header(index_file);
         printf("Root: %d\n", header.root_rrn);
         printf("Insert counter: %d\n", header.insert_count);
@@ -159,6 +159,7 @@ void initialize_btree(const char *index_filename)
 void write_student(FILE *file, StudentRecord *student)
 {
     int size = calcularTamanhoRegistro(*student);
+    fseek(file, 0, SEEK_END);
     fwrite(&size, sizeof(int), 1, file);
     // Escreve o conteúdo do registro
     fwrite(student->id, sizeof(student->id), 1, file);
@@ -301,7 +302,7 @@ void read_page(int rrn, BTreePage *page)
 // Função para obter um novo RRN para uma página
 int getpage()
 {
-    FILE *index_file = fopen(INDEX_FILENAME, "ab+");
+    FILE *index_file = fopen(INDEX_FILENAME, "rb+");
     if (!index_file)
     {
         perror("Erro ao abrir o arquivo de índice");
@@ -529,7 +530,7 @@ int insert_in_tree(int rrn, char *key, int record_rrn, int *promo_child, char *p
 
     BTreePage page, newpage;
     
-    short p_b_rrn;
+    int p_b_rrn;
     char p_b_key[7];
 
     if (rrn == NIL)
