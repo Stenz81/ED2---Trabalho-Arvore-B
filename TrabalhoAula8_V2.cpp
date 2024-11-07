@@ -144,7 +144,7 @@ void initialize_btree(const char *index_filename)
         printf("Arquivo de índice já existe e foi aberto para leitura/escrita.\n");
         Header header;
         header = read_header(index_file);
-        printf("Root: %d\n", header.root_rrn);
+        //printf("Root: %d\n", header.root_rrn);
         printf("Insert counter: %d\n", header.insert_count);
         printf("Search counter: %d\n", header.search_count);
     }
@@ -266,9 +266,13 @@ int get_root(FILE *index_file)
 // Função para definir o RRN da raiz da árvore-B
 void set_root(int root)
 {
+    Header header;
     FILE *index_file = fopen(INDEX_FILENAME, "rb+");
+    read_header(index_file);
+    header.root_rrn = root;
     fseek(index_file, 0, SEEK_SET);
-    fwrite(&root, sizeof(int), 1, index_file);
+    update_header(index_file, &header);
+    //fwrite(&root, sizeof(int), 1, index_file);
 }
 
 // Função para gravar uma página da árvore-B no arquivo de índice
@@ -310,6 +314,7 @@ int getpage()
     }
     fseek(index_file, 0, SEEK_END);
     int rrn = (ftell(index_file) - sizeof(Header)) / sizeof(BTreePage);
+    //printf("RRN(getpage): %d\n", rrn);
     fclose(index_file);
     return rrn;
 }
@@ -317,11 +322,13 @@ int getpage()
 // Inicializa uma página da árvore-B
 void init_page(BTreePage *page)
 {
+    printf("Pagina inicializada.\n");
     page->keycount = 0;
     for (int i = 0; i < MAX_KEYS; i++)
     {
         memset(page->keys[i], '\0', sizeof(page->keys[i]));
         page->children[i] = NIL;
+        page->record_rrn[i] = NIL;
     }
     page->children[MAX_KEYS] = NIL;
 }
@@ -348,7 +355,7 @@ int create_root(char *key, int left_child, int right_child)
 // Insere uma chave em uma página da árvore-B
 void insert_in_page(char *key, int record_rrn, int right_child, BTreePage *page)
 {
-    printf("Entrou no insert in page. \n");
+    //printf("Entrou no insert in page. \n");
     int j;
     for (j = page->keycount - 1; j >= 0 && strcmp(key, page->keys[j]) < 0; j--)
     {
@@ -356,7 +363,7 @@ void insert_in_page(char *key, int record_rrn, int right_child, BTreePage *page)
         page->children[j + 2] = page->children[j + 1];
         page->record_rrn[j + 1] = page->record_rrn[j];
     }
-    printf("Passou do for de comparacoes do insert in page. \n");
+    //printf("Passou do for de comparacoes do insert in page. \n");
     strcpy(page->keys[j + 1], key);
     page->record_rrn[j + 1] = record_rrn;
     page->children[j + 2] = right_child;
@@ -469,7 +476,7 @@ void split(char *key, int r_child, BTreePage *p_oldpage, char *promo_key, int *p
     int workchil[MAX_KEYS + 2];
     int work_rrns[MAX_KEYS + 1];
 
-    printf("key = %s\n", key);
+    //printf("key = %s\n", key);
 
     // Copia chaves e filhos para arrays temporários
     for (j = 0; j < MAX_KEYS; j++)
@@ -529,15 +536,17 @@ int insert_in_tree(int rrn, char *key, int record_rrn, int *promo_child, char *p
     //BTreePage page;
 
     BTreePage page, newpage;
+    //Current page / new page if split occurs
     
-    int p_b_rrn;
-    char p_b_key[7];
+    int p_b_rrn; // rrn promoted from below
+    char p_b_key[7]; //chave promoted from below
 
     if (rrn == NIL)
     {
         // Caso base: se o nó é NIL, a chave deve ser promovida ao nível superior
         strcpy(promo_key, key);
         *promo_rrn = record_rrn;
+        printf("Record rrn: %d\n", record_rrn);
         *promo_child = NIL;
         return 1; // Indica que a promoção ocorreu
     }
@@ -587,6 +596,7 @@ int insert_in_tree(int rrn, char *key, int record_rrn, int *promo_child, char *p
         split(key, p_b_rrn, &page, promo_key, promo_child, &newpage);
 
         write_page(rrn, &page);
+        write_page(*promo_child, &newpage);
         return 1; // Indica que uma promoção adicional ocorreu
     }
 }
@@ -603,9 +613,11 @@ void insert_student(FILE *index_file, FILE *data_file, StudentRecord *student)
     int promo_rrn;
 
     int root = header.root_rrn;
+    fseek(data_file, 0, SEEK_END);
+    int record_rrn = ftell(data_file) /*/ sizeof(StudentRecord)*/;
 
     // Primeiro, tentamos inserir na árvore-B
-    int promoted = insert_in_tree(root, key, -1, &promo_child, promo_key, &promo_rrn);
+    int promoted = insert_in_tree(root, key, record_rrn, &promo_child, promo_key, &promo_rrn);
 
     // Se a chave é duplicada, atualiza o contador e retorna
     if (promoted == -1)
@@ -617,8 +629,7 @@ void insert_student(FILE *index_file, FILE *data_file, StudentRecord *student)
     }
 
     // Se a chave não for duplicada, insere o registro no arquivo de dados
-    fseek(data_file, 0, SEEK_END);
-    int record_rrn = ftell(data_file) /*/ sizeof(StudentRecord)*/;
+    
     write_student(data_file, student);
 
     // Atualiza `promo_rrn` com o endereço do registro no arquivo de dados
@@ -629,6 +640,7 @@ void insert_student(FILE *index_file, FILE *data_file, StudentRecord *student)
     {
         // Caso a promoção ocorra na raiz, cria uma nova raiz
         root = create_root(promo_key, promo_rrn, promo_child);
+
         header.root_rrn = root; // Atualiza o RRN da raiz no cabeçalho
     }
 
@@ -658,7 +670,7 @@ int main()
     fclose(file);
 
     // Exibe os registros lidos para verificar se tudo foi lido corretamente
-    for (int i = 0; i < MAX_INSERE; i++)
+    /*for (int i = 0; i < MAX_INSERE; i++)
     {
         printf("ID Aluno: %s\n", vet[i].id);
         printf("Sigla Disciplina: %s\n", vet[i].discipline);
@@ -666,7 +678,7 @@ int main()
         printf("Nome Disciplina: %s\n", vet[i].discipline_name);
         printf("Media: %.2f\n", vet[i].grade);
         printf("Frequencia: %.2f\n\n", vet[i].attendance);
-    }
+    }*/
 
     // Leitura dos registros para busca:
 
@@ -685,12 +697,12 @@ int main()
     fclose(file);
 
     // Exibe os registros lidos para verificar se tudo foi lido corretamente
-    for (int i = 0; i < MAX_BUSCA; i++)
+    /*for (int i = 0; i < MAX_BUSCA; i++)
     {
         printf("ID Aluno: %s\n", vet_b[i].id_aluno);
         printf("Sigla Disciplina: %s\n", vet_b[i].sigla_disc);
         printf("\n");
-    }
+    }*/
 
     // Inicializa a árvore-B (cria o arquivo de índice se ele não existe)
     initialize_btree(INDEX_FILENAME);
